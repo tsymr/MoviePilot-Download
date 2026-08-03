@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MoviePilot PT Send 设置</title>
+    <link rel="stylesheet" href="../shared/base.css">
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="settings-shell">
+      <header class="settings-header">
+        <div class="brand-lockup">
+          <img src="../../assets/icon128.png" width="48" height="48" alt="">
+          <div>
+            <span class="product-line">MOVIEPILOT EXTENSION</span>
+            <h1>PT Send 设置</h1>
+          </div>
+        </div>
+        <div class="connection-state">
+          <span id="statusDot" class="status-dot"></span>
+          <span id="headerState">未检测</span>
+        </div>
+      </header>
+
+      <form id="settingsForm" novalidate>
+        <section class="settings-section" aria-labelledby="connectionHeading">
+          <div class="section-rail">
+            <span>01</span>
+            <h2 id="connectionHeading">连接</h2>
+          </div>
+          <div class="section-content connection-grid">
+            <label>
+              <span class="field-label">MoviePilot 地址</span>
+              <input id="baseUrlInput" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="http://192.168.1.10:3000" required>
+            </label>
+            <label>
+              <span class="field-label">API Token</span>
+              <span class="token-control">
+                <input id="apiTokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="MoviePilot API_TOKEN" required>
+                <button id="tokenVisibilityButton" class="token-visibility" type="button" title="显示 API Token" aria-label="显示 API Token">
+                  <i data-lucide="eye" aria-hidden="true"></i>
+                </button>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-section" aria-labelledby="routingHeading">
+          <div class="section-rail">
+            <span>02</span>
+            <h2 id="routingHeading">默认路由</h2>
+          </div>
+          <div class="section-content routing-grid">
+            <label>
+              <span class="field-label">下载器</span>
+              <select id="defaultDownloaderSelect">
+                <option value="">MoviePilot 自动选择</option>
+              </select>
+            </label>
+            <label>
+              <span class="field-label">保存路径</span>
+              <select id="defaultPathSelect">
+                <option value="">按媒体分类自动选择</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-section" aria-labelledby="privacyHeading">
+          <div class="section-rail">
+            <span>03</span>
+            <h2 id="privacyHeading">PT 登录态</h2>
+          </div>
+          <div class="section-content">
+            <div class="setting-line switch-row">
+              <div>
+                <strong>默认附带当前站点 Cookie</strong>
+                <span>Cookie 仅随本次请求发送，不保存</span>
+              </div>
+              <label class="switch" title="默认附带当前站点 Cookie">
+                <input id="includeCookiesInput" type="checkbox">
+                <span class="switch-track" aria-hidden="true"></span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <div class="action-bar">
+          <div id="formStatus" class="form-status" role="status" aria-live="polite">
+            设置尚未保存
+          </div>
+          <div class="action-buttons">
+            <button id="testButton" class="button button-secondary" type="button">
+              <i data-lucide="plug-zap" aria-hidden="true"></i>
+              <span>测试连接</span>
+            </button>
+            <button id="saveButton" class="button button-primary" type="submit">
+              <i data-lucide="save" aria-hidden="true"></i>
+              <span>保存设置</span>
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <footer class="settings-footer">
+        <span>MoviePilot PT Send</span>
+        <span>v0.1.0 · Manifest V3</span>
+      </footer>
+    </main>
+
+    <script src="../vendor/lucide.min.js"></script>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

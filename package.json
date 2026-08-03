@@ -1,0 +1,14 @@
+{
+  "name": "moviepilot-pt-send",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "将 PT 站种子链接发送到 MoviePilot 的 Chrome 扩展",
+  "scripts": {
+    "check": "node scripts/validate-extension.mjs",
+    "test": "node --test && npm run check"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

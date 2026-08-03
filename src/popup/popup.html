@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MoviePilot PT Send</title>
+    <link rel="stylesheet" href="../shared/base.css">
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <img src="../../assets/icon48.png" width="34" height="34" alt="">
+          <div>
+            <div class="brand-name">MoviePilot</div>
+            <div class="brand-mode">PT SEND / AUTO ROUTE</div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button id="refreshButton" class="icon-button" type="button" title="重新读取当前页面" aria-label="重新读取当前页面">
+            <i data-lucide="refresh-cw" aria-hidden="true"></i>
+          </button>
+          <button id="settingsButton" class="icon-button" type="button" title="打开设置" aria-label="打开设置">
+            <i data-lucide="settings-2" aria-hidden="true"></i>
+          </button>
+        </div>
+      </header>
+
+      <div class="popup-content">
+        <section id="configurationNotice" class="configuration-notice" hidden>
+          <div>
+            <strong>尚未连接 MoviePilot</strong>
+            <span>需要服务地址与 API Token</span>
+          </div>
+          <button id="configureButton" class="button button-secondary" type="button">设置</button>
+        </section>
+
+        <section class="section editor-section" aria-labelledby="torrentHeading">
+          <div class="section-heading">
+            <div>
+              <span class="section-index">01</span>
+              <h1 id="torrentHeading">种子信息</h1>
+            </div>
+            <span id="siteBadge" class="site-badge">未检测</span>
+          </div>
+
+          <label class="field">
+            <span class="field-label">下载链接</span>
+            <input id="enclosureInput" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://pt.example/download.php?id=...">
+          </label>
+
+          <label class="field">
+            <span class="field-label">发布标题</span>
+            <input id="titleInput" type="text" autocomplete="off" spellcheck="false" placeholder="Movie.Name.2026.1080p...">
+          </label>
+
+          <label class="field">
+            <span class="field-label">副标题 / 描述</span>
+            <textarea id="descriptionInput" rows="2" maxlength="1000" placeholder="可选"></textarea>
+          </label>
+        </section>
+
+        <section class="section recognition-section" aria-labelledby="recognitionHeading">
+          <div class="section-heading compact-heading">
+            <div>
+              <span class="section-index">02</span>
+              <h2 id="recognitionHeading">媒体识别</h2>
+            </div>
+            <button id="recognizeButton" class="button button-secondary compact-button" type="button">
+              <i data-lucide="scan-search" aria-hidden="true"></i>
+              <span>识别</span>
+            </button>
+          </div>
+
+          <div id="recognitionEmpty" class="recognition-empty">
+            <i data-lucide="scan-line" aria-hidden="true"></i>
+            <span>等待 MoviePilot 识别</span>
+          </div>
+          <dl id="recognitionResult" class="recognition-result" hidden>
+            <div class="recognition-title-row">
+              <div>
+                <dt>媒体</dt>
+                <dd id="mediaTitle">—</dd>
+              </div>
+              <span id="mediaType" class="media-chip">—</span>
+            </div>
+            <div>
+              <dt>年份</dt>
+              <dd id="mediaYear">—</dd>
+            </div>
+            <div>
+              <dt>季集</dt>
+              <dd id="mediaEpisode">—</dd>
+            </div>
+            <div>
+              <dt>分类</dt>
+              <dd id="mediaCategory">—</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="section delivery-section" aria-labelledby="deliveryHeading">
+          <div class="section-heading compact-heading">
+            <div>
+              <span class="section-index">03</span>
+              <h2 id="deliveryHeading">下载路由</h2>
+            </div>
+            <span class="auto-label">AUTO</span>
+          </div>
+
+          <div class="choice-grid">
+            <label>
+              <span class="field-label">下载器</span>
+              <select id="downloaderSelect">
+                <option value="">MoviePilot 自动选择</option>
+              </select>
+            </label>
+            <label>
+              <span class="field-label">保存路径</span>
+              <select id="pathSelect">
+                <option value="">按媒体分类自动选择</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="cookie-row switch-row">
+            <div>
+              <strong>附带当前 PT 站 Cookie</strong>
+              <span>仅用于本次种子下载</span>
+            </div>
+            <label class="switch" title="附带当前 PT 站 Cookie">
+              <input id="cookieToggle" type="checkbox">
+              <span class="switch-track" aria-hidden="true"></span>
+            </label>
+          </div>
+        </section>
+      </div>
+
+      <div class="popup-footer">
+        <div class="submit-zone">
+          <button id="sendButton" class="button button-primary send-button" type="button">
+            <i data-lucide="send" aria-hidden="true"></i>
+            <span>发送到 MoviePilot</span>
+          </button>
+        </div>
+
+        <footer id="statusBar" class="status-bar" role="status" aria-live="polite">
+          <span id="statusDot" class="status-dot"></span>
+          <span id="statusText">正在读取当前页面</span>
+        </footer>
+      </div>
+    </main>
+
+    <script src="../vendor/lucide.min.js"></script>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
