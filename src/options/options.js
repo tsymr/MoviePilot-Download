@@ -1,7 +1,11 @@
 import { MESSAGE_TYPES } from "../shared/constants.js";
 import { requestSendPermissions } from "../shared/permissions.js";
 import { getContextMenuTitle } from "../shared/settings-policy.js";
-import { getSettings, saveSettings } from "../shared/storage.js";
+import {
+  getSettings,
+  saveRecognitionPreference,
+  saveSettings
+} from "../shared/storage.js";
 import { normalizeBaseUrl } from "../shared/url-utils.js";
 
 const elements = {
@@ -221,7 +225,7 @@ function fillDownloadOptions(downloaders, paths, selected) {
  * @param {string} type MESSAGE_TYPES 中的消息类型。
  * @returns {Promise<object>} 后台成功响应。
  * @throws {Error} 后台请求失败时抛出。
- * @sideEffects 由消息类型决定；本页只用于 MoviePilot 只读连接测试。
+ * @sideEffects 由消息类型决定；可能执行 MoviePilot 只读测试或重建右键菜单。
  */
 async function callBackground(type) {
   const response = await chrome.runtime.sendMessage({ type });
@@ -252,6 +256,30 @@ async function saveCurrentSettings() {
     return saved;
   } finally {
     setButtonBusy(elements.saveButton, false);
+  }
+}
+
+/**
+ * 立即保存识别确认开关并显示对应的右键菜单行为。
+ *
+ * @returns {Promise<void>} 设置写入完成后解决，后台随后通过存储事件重建菜单。
+ * @throws {Error} Chrome 本地存储写入失败时抛出，并恢复开关原值。
+ * @sideEffects 写入识别确认设置、短暂禁用开关并触发后台重建右键菜单。
+ */
+async function saveRecognitionSettingImmediately() {
+  const enabled = elements.recognizeBeforeDownloadInput.checked;
+  elements.recognizeBeforeDownloadInput.disabled = true;
+  setStatus("working", "正在更新右键发送方式");
+  try {
+    const saved = await saveRecognitionPreference(enabled);
+    // 等待后台真正替换菜单后再提示成功，避免用户立即右键时命中旧的识别入口。
+    await callBackground(MESSAGE_TYPES.SYNC_CONTEXT_MENU);
+    setStatus("idle", `设置已保存 · ${getContextMenuTitle(saved)}`);
+  } catch (error) {
+    elements.recognizeBeforeDownloadInput.checked = !enabled;
+    throw error;
+  } finally {
+    elements.recognizeBeforeDownloadInput.disabled = false;
   }
 }
 
@@ -302,6 +330,11 @@ elements.form.addEventListener("submit", (event) => {
 
 elements.testButton.addEventListener("click", () => {
   testCurrentConnection().catch((error) => setStatus("error", error.message));
+});
+
+elements.recognizeBeforeDownloadInput.addEventListener("change", () => {
+  saveRecognitionSettingImmediately()
+    .catch((error) => setStatus("error", error.message));
 });
 
 elements.tokenVisibilityButton.addEventListener("click", () => {

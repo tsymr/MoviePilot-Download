@@ -1,6 +1,6 @@
 {
   "name": "moviepilot-pt-send",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "private": true,
   "type": "module",
   "description": "将 PT 站种子链接发送到 MoviePilot 的 Chrome 扩展",

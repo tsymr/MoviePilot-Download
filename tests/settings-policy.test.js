@@ -2,23 +2,38 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CONTEXT_MENU_IDS,
+  getContextMenuDefinition,
   getContextMenuTitle,
   isRecognitionConfirmationEnabled
 } from "../src/shared/settings-policy.js";
 
-test("关闭识别确认时菜单明确显示直接发送", () => {
+test("关闭识别确认时使用统一发送菜单", () => {
   const settings = { recognizeBeforeDownload: false };
   assert.equal(isRecognitionConfirmationEnabled(settings), false);
-  assert.equal(getContextMenuTitle(settings), "直接发送到 MoviePilot");
+  assert.equal(getContextMenuTitle(settings), "发送到 MoviePilot");
+  assert.deepEqual(getContextMenuDefinition(settings), {
+    id: CONTEXT_MENU_IDS.DIRECT_SEND,
+    title: "发送到 MoviePilot",
+    requiresConfirmation: false
+  });
 });
 
-test("只有布尔值 true 才显示识别发送菜单", () => {
+test("开启识别只改变菜单 ID 和确认策略", () => {
   assert.equal(
     getContextMenuTitle({ recognizeBeforeDownload: true }),
-    "识别并发送到 MoviePilot"
+    "发送到 MoviePilot"
+  );
+  assert.deepEqual(
+    getContextMenuDefinition({ recognizeBeforeDownload: true }),
+    {
+      id: CONTEXT_MENU_IDS.RECOGNIZE_SEND,
+      title: "发送到 MoviePilot",
+      requiresConfirmation: true
+    }
   );
   assert.equal(
     getContextMenuTitle({ recognizeBeforeDownload: "false" }),
-    "直接发送到 MoviePilot"
+    "发送到 MoviePilot"
   );
 });

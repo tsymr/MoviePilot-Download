@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { DEFAULT_SETTINGS } from "../src/shared/constants.js";
-import { getSettings, saveSettings } from "../src/shared/storage.js";
+import {
+  getSettings,
+  saveRecognitionPreference,
+  saveSettings
+} from "../src/shared/storage.js";
 
 test("右键发送默认跳过识别确认", () => {
   assert.equal(DEFAULT_SETTINGS.recognizeBeforeDownload, false);
@@ -78,6 +82,35 @@ test("保存设置时只接受布尔值 true 开启行为策略", async () => {
     });
     assert.equal(storedSettings.recognizeBeforeDownload, false);
     assert.equal(storedSettings.includeCookiesByDefault, false);
+  } finally {
+    delete globalThis.chrome;
+  }
+});
+
+test("识别确认开关可以脱离整张表单即时保存", async () => {
+  let storedSettings = null;
+  globalThis.chrome = {
+    storage: {
+      local: {
+        get: async () => ({
+          moviepilotSettings: {
+            baseUrl: "https://moviepilot.example",
+            apiToken: "token-token-token-token",
+            recognizeBeforeDownload: true
+          }
+        }),
+        set: async (value) => {
+          storedSettings = value.moviepilotSettings;
+        }
+      }
+    }
+  };
+
+  try {
+    const saved = await saveRecognitionPreference(false);
+    assert.equal(saved.recognizeBeforeDownload, false);
+    assert.equal(storedSettings.recognizeBeforeDownload, false);
+    assert.equal(storedSettings.apiToken, "token-token-token-token");
   } finally {
     delete globalThis.chrome;
   }

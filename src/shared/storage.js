@@ -58,6 +58,23 @@ export async function saveSettings(input) {
 }
 
 /**
+ * 单独保存“发送前识别并确认”开关，使该开关无需等待整张设置表单提交即可生效。
+ *
+ * @param {boolean} enabled 是否开启识别确认，仅严格的 true 会开启。
+ * @returns {Promise<object>} 更新后的完整设置对象。
+ * @throws {Error} Chrome 本地存储读取或写入失败时 Promise 会拒绝。
+ * @sideEffects 覆盖 chrome.storage.local 中的扩展设置，并触发后台重建右键菜单。
+ */
+export async function saveRecognitionPreference(enabled) {
+  const settings = {
+    ...await getSettings(),
+    recognizeBeforeDownload: enabled === true
+  };
+  await chrome.storage.local.set({ [SETTINGS_KEY]: settings });
+  return settings;
+}
+
+/**
  * 在当前浏览器会话中暂存右键菜单生成的种子草稿。
  *
  * @param {object} draft 不包含 Cookie 和 API Token 的页面提取结果。

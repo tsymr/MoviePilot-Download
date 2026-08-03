@@ -25,5 +25,6 @@ export const MESSAGE_TYPES = Object.freeze({
   GET_DOWNLOAD_OPTIONS: "get-download-options",
   RECOGNIZE_TORRENT: "recognize-torrent",
   SEND_TORRENT: "send-torrent",
+  SYNC_CONTEXT_MENU: "sync-context-menu",
   TEST_CONNECTION: "test-connection"
 });

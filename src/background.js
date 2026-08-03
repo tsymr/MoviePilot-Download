@@ -9,8 +9,8 @@ import { extractTorrentPage } from "./shared/page-extractor.js";
 import { renderMoviePilotToast } from "./shared/page-toast.js";
 import { hasMoviePilotPermission } from "./shared/permissions.js";
 import {
-  getContextMenuTitle,
-  isRecognitionConfirmationEnabled
+  CONTEXT_MENU_IDS,
+  getContextMenuDefinition
 } from "./shared/settings-policy.js";
 import {
   getSettings,
@@ -18,7 +18,7 @@ import {
   takePendingDraft
 } from "./shared/storage.js";
 
-const CONTEXT_MENU_ID = "moviepilot-send-torrent";
+let contextMenuInstallQueue = Promise.resolve();
 
 /**
  * 将未知异常转换为可跨扩展消息边界传递的非敏感结构。
@@ -271,6 +271,9 @@ async function handleMessage(message) {
       });
       return { ok: true, ...result };
     }
+    case MESSAGE_TYPES.SYNC_CONTEXT_MENU:
+      await queueContextMenuInstall();
+      return { ok: true };
     default:
       throw new Error("不支持的扩展消息");
   }
@@ -284,45 +287,40 @@ async function handleMessage(message) {
  */
 async function installContextMenu() {
   const settings = await getSettings();
+  const menu = getContextMenuDefinition(settings);
   await chrome.contextMenus.removeAll();
   chrome.contextMenus.create({
-    id: CONTEXT_MENU_ID,
-    title: getContextMenuTitle(settings),
+    id: menu.id,
+    title: menu.title,
     contexts: ["link", "page"],
     documentUrlPatterns: ["http://*/*", "https://*/*"]
   });
 }
 
 /**
- * 让已有右键菜单立即反映最新识别策略，菜单缺失时自动重新创建。
+ * 串行重建右键菜单，避免设置保存与扩展生命周期事件并发时互相删除新菜单。
  *
- * @returns {Promise<void>} 菜单标题刷新完成后解决。
- * @sideEffects 读取扩展设置并更新或重建右键菜单。
+ * @returns {Promise<void>} 当前排队的菜单重建完成后解决。
+ * @throws {Error} 设置读取或 Chrome 右键菜单 API 失败时 Promise 会拒绝。
+ * @sideEffects 更新模块内队列，并覆盖本扩展的全部右键菜单项。
  */
-async function refreshContextMenu() {
-  const settings = await getSettings();
-  try {
-    await chrome.contextMenus.update(CONTEXT_MENU_ID, {
-      title: getContextMenuTitle(settings)
-    });
-  } catch {
-    // 扩展刚更新或浏览器清理菜单时可能不存在旧项，此时恢复完整菜单定义。
-    await installContextMenu();
-  }
+function queueContextMenuInstall() {
+  contextMenuInstallQueue = contextMenuInstallQueue
+    .catch(() => undefined)
+    .then(installContextMenu);
+  return contextMenuInstallQueue;
 }
 
 /**
- * 处理右键菜单发送：按配置决定直接下载，或打开已自动识别的确认弹窗。
- *
- * 直接下载不会申请新权限，以免右键操作后出现权限或确认弹窗；缺少权限时会在网页
- * 底部明确提示用户前往设置。识别模式只暂存不含凭据的草稿，由弹窗自动发起识别。
+ * 在右键来源页面提取草稿和已保存设置，并统一处理准备阶段错误。
  *
  * @param {chrome.contextMenus.OnClickData} info 右键菜单点击上下文。
  * @param {chrome.tabs.Tab} tab 触发菜单的标签页。
- * @returns {Promise<void>} 路由到弹窗或发送流程后解决。
- * @sideEffects 读取页面与设置；可能打开扩展弹窗，或向 MoviePilot 创建下载任务。
+ * @param {(context: {draft: object, settings: object}) => Promise<void>} action 模式专属操作。
+ * @returns {Promise<void>} 模式操作或错误反馈完成后解决。
+ * @sideEffects 读取页面和设置，并根据 action 访问 MoviePilot 或打开确认弹窗。
  */
-async function handleContextMenuClick(info, tab) {
+async function runContextMenuAction(info, tab, action) {
   let draft = { sourceTabId: tab.id };
   try {
     draft = await extractDraftFromTab(
@@ -334,22 +332,7 @@ async function handleContextMenuClick(info, tab) {
     if (!settings.apiToken) {
       throw new Error("请先在扩展设置中配置 MoviePilot");
     }
-
-    if (isRecognitionConfirmationEnabled(settings)) {
-      await setPendingDraft(draft);
-      await chrome.action.openPopup();
-      return;
-    }
-
-    if (!await hasMoviePilotPermission(settings.baseUrl)) {
-      throw new Error("请先在扩展设置中保存配置并授予 MoviePilot 访问权限");
-    }
-
-    // createDownload 已完整展示终态，右键事件没有调用方需要继续接收该异常。
-    await createDownload(settings, draft, {
-      downloader: settings.defaultDownloader,
-      savePath: settings.defaultSavePath
-    }).catch(() => undefined);
+    await action({ draft, settings });
   } catch (error) {
     await setActionState("error");
     await showPageStatus(
@@ -358,6 +341,46 @@ async function handleContextMenuClick(info, tab) {
       error instanceof Error ? error.message : "无法处理当前 PT 页面"
     );
   }
+}
+
+/**
+ * 处理“直接发送”菜单，不经过任何弹窗或媒体识别预览。
+ *
+ * 该处理器只会使用已保存的下载器、路径和 Cookie 策略创建任务。所需权限必须预先
+ * 在设置页授予，缺少权限时直接在来源网页底部显示失败，不触发权限或确认弹窗。
+ *
+ * @param {chrome.contextMenus.OnClickData} info 右键菜单点击上下文。
+ * @param {chrome.tabs.Tab} tab 触发菜单的标签页。
+ * @returns {Promise<void>} 下载完成或错误反馈显示后解决。
+ * @sideEffects 读取页面与设置，并可能向 MoviePilot 创建下载任务。
+ */
+async function handleDirectContextMenuClick(info, tab) {
+  await runContextMenuAction(info, tab, async ({ draft, settings }) => {
+    if (!await hasMoviePilotPermission(settings.baseUrl)) {
+      throw new Error("请先在扩展设置中保存配置并授予 MoviePilot 访问权限");
+    }
+
+    // createDownload 已完整展示终态，菜单监听器不需要再次报告相同错误。
+    await createDownload(settings, draft, {
+      downloader: settings.defaultDownloader,
+      savePath: settings.defaultSavePath
+    }).catch(() => undefined);
+  });
+}
+
+/**
+ * 处理“识别并发送”菜单，暂存草稿后打开媒体识别确认弹窗。
+ *
+ * @param {chrome.contextMenus.OnClickData} info 右键菜单点击上下文。
+ * @param {chrome.tabs.Tab} tab 触发菜单的标签页。
+ * @returns {Promise<void>} 草稿暂存并打开弹窗后解决。
+ * @sideEffects 读取页面与设置、写入会话草稿并打开扩展弹窗。
+ */
+async function handleRecognitionContextMenuClick(info, tab) {
+  await runContextMenuAction(info, tab, async ({ draft }) => {
+    await setPendingDraft(draft);
+    await chrome.action.openPopup();
+  });
 }
 
 /**
@@ -380,13 +403,13 @@ protectLocalSettings().catch(() => {
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  installContextMenu().catch(() => {
+  queueContextMenuInstall().catch(() => {
     // 安装阶段无法向用户展示弹窗，保留工具栏入口作为降级路径。
   });
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  installContextMenu().catch(() => {
+  queueContextMenuInstall().catch(() => {
     // 菜单创建失败不影响用户通过工具栏弹窗发送种子。
   });
 });
@@ -395,17 +418,24 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local" || !changes[SETTINGS_KEY]) {
     return;
   }
-  refreshContextMenu().catch(() => {
-    // 菜单刷新失败不改变点击时读取的真实策略，下次启动仍会重新创建。
+  queueContextMenuInstall().catch(() => {
+    // 菜单重建失败不修改设置，下次启动仍会按当前策略重新创建。
   });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== CONTEXT_MENU_ID || !tab?.id) {
+  if (!tab?.id) {
     return;
   }
-  handleContextMenuClick(info, tab).catch(() => {
-    // handleContextMenuClick 已尽力展示错误；监听器不得留下未处理的 Promise。
+  const handler = {
+    [CONTEXT_MENU_IDS.DIRECT_SEND]: handleDirectContextMenuClick,
+    [CONTEXT_MENU_IDS.RECOGNIZE_SEND]: handleRecognitionContextMenuClick
+  }[info.menuItemId];
+  if (!handler) {
+    return;
+  }
+  handler(info, tab).catch(() => {
+    // 模式处理器已尽力展示错误；监听器不得留下未处理的 Promise。
   });
 });
 
