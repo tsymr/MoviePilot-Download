@@ -47,3 +47,19 @@ test("后台唯一弹窗调用只属于识别确认处理器", () => {
     1
   );
 });
+
+test("M-Team 临时地址只在发送阶段通过页面主环境解析", () => {
+  const resolver = getFunctionSection(
+    "resolveDynamicDownloadDraft",
+    "createDownload"
+  );
+  const downloadFlow = getFunctionSection("createDownload", "handleMessage");
+
+  assert.match(resolver, /world:\s*"MAIN"/);
+  assert.match(resolver, /resolveMTeamDownloadUrlFromPage/);
+  assert.match(
+    downloadFlow,
+    /resolvedDraft\s*=\s*await resolveDynamicDownloadDraft\(draft\)/
+  );
+  assert.match(downloadFlow, /addTorrent\(settings, resolvedDraft/);
+});

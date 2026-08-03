@@ -4,7 +4,7 @@
  * 此函数会由 chrome.scripting.executeScript 序列化到页面隔离环境执行，因此实现必须保持
  * 完全自包含，不能引用模块级变量。它只读取 DOM、选区和 navigator，不修改页面内容。
  *
- * @param {string} [preferredUrl] 右键菜单明确选中的种子链接；为空时自动寻找最佳候选。
+ * @param {string} [preferredUrl] 右键菜单明确选中的链接；特殊详情页可按站点规则忽略它。
  * @returns {object} 包含标题、副标题、下载链接、详情页和 User-Agent 的草稿。
  * @throws {Error} document 或 location 不可用时由浏览器执行环境抛出。
  * @sideEffects 只读访问当前页面 DOM，不读取 Cookie，也不发起网络请求。
@@ -31,6 +31,73 @@ export function extractTorrentPage(preferredUrl = "") {
       return "";
     }
   };
+
+  const mTeamDetailMatch = location.hostname.toLowerCase() === "kp.m-team.cc"
+    ? location.pathname.match(/^\/detail\/(\d+)\/?$/)
+    : null;
+  if (mTeamDetailMatch) {
+    // 右键可能落在评分、豆瓣或 IMDb 链接上，Chrome 会把这些链接作为 preferredUrl
+    // 传入。M-Team 详情页没有静态种子链接，因此站点专用规则必须拥有最高优先级。
+    // M-Team 的下载按钮没有 href，真正地址只能在发送时使用页面登录态动态生成。
+    // 上方媒体名标题也包含年份，必须以清晰度或片源标记定位资源发布名所在的 h2。
+    const releaseTitlePattern = /2160p|1080[pi]|720p|WEB[- .]?DL|BluRay|REMUX|HDTV/i;
+    const releaseHeading = [...document.querySelectorAll("h2")]
+      .find((heading) => releaseTitlePattern.test(cleanText(heading.textContent)));
+    // 实页中发布名和 Free/倒计时分别位于 h2 的不同 span；只选取带片源标记的
+    // 子元素，避免促销文案进入 MoviePilot 标题。document.title 仅作为结构变化时的兜底。
+    const titleElement = [...(releaseHeading?.childNodes ?? [])]
+      .find((node) => releaseTitlePattern.test(cleanText(node?.textContent)));
+    const titleFromHeading = cleanText(
+      titleElement?.textContent
+    );
+    const titleFromDocument = document.title.match(
+      /(?:種子詳情|种子详情)\s*["“](.+?)["”]\s*(?:-|$)/i
+    )?.[1];
+    const title = cleanText(
+      titleFromHeading
+      || titleFromDocument
+      || releaseHeading?.textContent
+    );
+    const description = [...document.querySelectorAll("p")]
+      .map((paragraph) => cleanText(paragraph.textContent))
+      .find((text) => /\|\s*(?:类型|類型)\s*[:：]/.test(text))
+      ?? "";
+    const mTeamAnchors = [...document.querySelectorAll("a[href]")];
+    const doubanId = mTeamAnchors
+      .map((anchor) => normalizeUrl(anchor.getAttribute("href")))
+      .map((href) => href.match(
+        /^https?:\/\/(?:www\.)?movie\.douban\.com\/subject\/(\d+)(?:[/?#]|$)/i
+      )?.[1] ?? "")
+      .find(Boolean) ?? "";
+    const categoryText = mTeamAnchors
+      .filter((anchor) => /\/browse(?:[/?#]|$)/i.test(
+        normalizeUrl(anchor.getAttribute("href"))
+      ))
+      .map((anchor) => cleanText(anchor.textContent))
+      .join(" ");
+    let mediaType = "";
+    if (/(?:电影|電影|movie)/i.test(categoryText)) {
+      mediaType = "电影";
+    } else if (/(?:电视剧|電視劇|剧集|劇集|综艺|綜藝|(?:^|\W)tv(?:\W|$))/i
+      .test(categoryText)) {
+      mediaType = "电视剧";
+    }
+
+    return {
+      title,
+      description: description.slice(0, 1000),
+      enclosure: "",
+      pageUrl: location.href,
+      siteName: location.hostname,
+      userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
+      extractedAt: new Date().toISOString(),
+      downloadAdapter: "mteam-dynamic-download",
+      torrentId: mTeamDetailMatch[1],
+      mediaSource: doubanId ? "douban" : "",
+      mediaId: doubanId,
+      mediaType
+    };
+  }
 
   /**
    * 为链接计算种子下载可能性。PT 站实现差异很大，因此组合扩展名、路径、参数和文案，
@@ -187,7 +254,7 @@ export function extractTorrentPage(preferredUrl = "") {
     enclosure,
     pageUrl: location.href,
     siteName: location.hostname,
-    userAgent: navigator.userAgent,
+    userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
     extractedAt: new Date().toISOString()
   };
 }

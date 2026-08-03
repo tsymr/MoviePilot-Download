@@ -7,6 +7,10 @@ import {
 } from "./shared/moviepilot-api.js";
 import { extractTorrentPage } from "./shared/page-extractor.js";
 import { renderMoviePilotToast } from "./shared/page-toast.js";
+import {
+  isMTeamDynamicDraft,
+  resolveMTeamDownloadUrlFromPage
+} from "./shared/mteam-adapter.js";
 import { hasMoviePilotPermission } from "./shared/permissions.js";
 import {
   CONTEXT_MENU_IDS,
@@ -17,6 +21,7 @@ import {
   setPendingDraft,
   takePendingDraft
 } from "./shared/storage.js";
+import { isSupportedTorrentUrl } from "./shared/url-utils.js";
 
 let contextMenuInstallQueue = Promise.resolve();
 
@@ -190,6 +195,47 @@ async function setActionState(state) {
 }
 
 /**
+ * 将需要站点登录态的动态草稿转换为 MoviePilot 可直接下载的临时 URL。
+ *
+ * 普通 HTTP(S) 和 magnet 草稿原样返回。M-Team 草稿只在真正发送前解析，避免确认弹窗
+ * 停留时间过长导致短期令牌失效；解析结果只存在于本次调用内存中。
+ *
+ * @param {object} draft 页面提取或用户编辑后的种子草稿。
+ * @returns {Promise<object>} 带有可下载 enclosure 的草稿。
+ * @throws {Error} 来源标签页失效、页面已跳转或 M-Team 无法生成地址时抛出。
+ * @sideEffects 对 M-Team 草稿会在来源页 MAIN world 中读取必要登录态并请求一次临时令牌。
+ */
+async function resolveDynamicDownloadDraft(draft) {
+  if (isSupportedTorrentUrl(draft?.enclosure) || !isMTeamDynamicDraft(draft)) {
+    return draft;
+  }
+
+  const tabId = Number(draft?.sourceTabId);
+  if (!Number.isInteger(tabId) || tabId < 0) {
+    throw new Error("M-Team 来源页面已失效，请回到资源详情页重试");
+  }
+
+  let results;
+  try {
+    results = await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [0] },
+      world: "MAIN",
+      func: resolveMTeamDownloadUrlFromPage,
+      args: [draft.torrentId]
+    });
+  } catch {
+    // 不透传 Chrome 的主环境异常，避免错误栈意外包含页面内部状态或临时令牌。
+    throw new Error("无法生成 M-Team 临时下载地址，请确认资源页仍处于登录状态");
+  }
+
+  const enclosure = String(results?.[0]?.result ?? "").trim();
+  if (!isSupportedTorrentUrl(enclosure)) {
+    throw new Error("M-Team 没有返回有效的临时下载地址");
+  }
+  return { ...draft, enclosure };
+}
+
+/**
  * 按已保存配置向 MoviePilot 创建下载任务，并统一更新网页提示与扩展角标。
  *
  * Cookie 策略只读取 settings.includeCookiesByDefault，调用方不能按单次发送覆盖，
@@ -209,10 +255,11 @@ async function createDownload(settings, draft, delivery = {}) {
   await showPageStatus(draft, "working", "正在发送到 MoviePilot");
 
   try {
+    const resolvedDraft = await resolveDynamicDownloadDraft(draft);
     const cookieHeader = settings.includeCookiesByDefault
       ? await buildCookieHeader(draft?.pageUrl)
       : "";
-    const result = await addTorrent(settings, draft, {
+    const result = await addTorrent(settings, resolvedDraft, {
       downloader: delivery.downloader,
       savePath: delivery.savePath,
       cookieHeader

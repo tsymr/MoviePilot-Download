@@ -6,6 +6,7 @@
 
 - 右键菜单统一显示“发送到 MoviePilot”；关闭识别确认时立即发送，开启后先展示识别结果。
 - 从常见 NexusPHP 类页面和通用 PT 页面提取下载链接、发布标题与副标题。
+- 支持 M-Team `kp.m-team.cc/detail/{id}` 动态下载按钮，在发送前生成短期下载地址。
 - 可配置“发送前识别并确认”；开启后自动预览媒体、年份、季集和分类，再由用户确认下载。
 - 调用 MoviePilot `/api/v1/download/add` 创建任务。
 - 下载器与保存路径默认留空，由 MoviePilot 自动选择；也可以在弹窗中临时覆盖。
@@ -59,6 +60,16 @@ https://example.com/moviepilot
 
 在 PT 种子详情页打开扩展弹窗。扩展会从当前页面选择最可能的种子下载链接，并提取标题和副标题。页面结构特殊时可以直接编辑三个字段。
 
+### M-Team 资源页
+
+M-Team 的“下载”按钮不是普通链接，而是使用页面登录态动态生成短期地址。扩展会识别
+`https://kp.m-team.cc/detail/{id}` 页面，并在真正发送时调用 M-Team 下载接口生成地址，
+以资源标题元素中可见的发布名作为 MoviePilot 标题，同时将页面公开的豆瓣 ID 作为媒体
+身份补充；促销徽标和倒计时不会拼入标题。即使右键落在评分、豆瓣或 IMDb 链接上，
+这些元数据链接也不会覆盖资源标题或被误作种子地址。
+因此发送完成前需要保持原资源页处于登录状态且不要跳转。页面授权信息和临时下载地址
+只在本次发送内存中使用，不会写入扩展存储。
+
 ## 自动分类规则
 
 默认保存路径为“按媒体分类自动选择”，发送请求时 `save_path` 为 `null`。MoviePilot 将：
@@ -84,6 +95,7 @@ https://example.com/moviepilot
 
 - API Token 保存在 `chrome.storage.local`，不会使用浏览器同步存储；存储访问级别限制为扩展可信上下文。
 - PT Cookie 不会写入扩展存储，只在发送时从当前 PT 页面临时读取并交给用户配置的 MoviePilot；关闭配置后发送逻辑不会读取 Cookie。
+- M-Team 动态下载会在来源页主环境中临时使用该站登录态生成下载地址；授权值不会返回扩展后台，生成的短期地址只会立即交给 MoviePilot。
 - MoviePilot 请求使用 `X-API-KEY` 请求头，API Token 不出现在 URL、错误消息或扩展日志中。
 - 扩展申请主机权限时会固定 URL 的实际端口；未填写端口时使用 HTTP 80 或 HTTPS 443。
 
@@ -103,6 +115,7 @@ npm test
 manifest.json                 Chrome Manifest V3 配置
 src/background.js             右键菜单、页面提取、Cookie 和 MoviePilot 请求编排
 src/shared/                   API、权限、存储、URL 与页面提取逻辑
+src/shared/mteam-adapter.js   M-Team 动态下载地址生成与草稿校验
 src/popup/                    种子确认、识别和发送弹窗
 src/options/                  MoviePilot 连接与默认路由设置
 tests/                        Node.js 单元测试
@@ -113,7 +126,7 @@ scripts/validate-extension.mjs 静态结构校验
 
 - 扩展发送的是可直接下载 `.torrent` 的 URL 或 magnet 链接，不会把 PT 详情页 URL 当成种子文件。
 - 各 PT 站 DOM 结构并不统一；需要逐次核对时应开启“发送前识别并确认”。
-- 如果 PT 站使用验证码、一次性页面交互或非 Cookie 鉴权，MoviePilot 仍可能无法从链接取得种子文件。
+- 除已适配的 M-Team 外，如果 PT 站使用验证码、一次性页面交互或非 Cookie 鉴权，MoviePilot 仍可能无法从链接取得种子文件。
 - MoviePilot 必须已经配置至少一个下载器和匹配媒体分类的下载目录。
 
 ## 许可证

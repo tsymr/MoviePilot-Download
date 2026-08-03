@@ -1,4 +1,5 @@
 import { MESSAGE_TYPES } from "../shared/constants.js";
+import { isMTeamDynamicDraft } from "../shared/mteam-adapter.js";
 import {
   hasMoviePilotPermission,
   requestMoviePilotPermission,
@@ -124,6 +125,9 @@ function fillDraft(draft) {
   elements.enclosureInput.value = draft?.enclosure ?? "";
   elements.titleInput.value = draft?.title ?? "";
   elements.descriptionInput.value = draft?.description ?? "";
+  elements.enclosureInput.placeholder = isMTeamDynamicDraft(draft)
+    ? "发送时自动生成 M-Team 临时下载地址"
+    : "https://pt.example/download.php?id=...";
   elements.siteBadge.textContent = inferSiteName(draft?.pageUrl, draft?.enclosure);
   clearRecognition();
 }
@@ -249,9 +253,15 @@ async function refreshDraft() {
   try {
     const result = await callBackground(MESSAGE_TYPES.GET_DRAFT);
     fillDraft(result.draft);
+    const hasDynamicDownload = isMTeamDynamicDraft(result.draft);
+    const hasEnclosure = isSupportedTorrentUrl(result.draft?.enclosure);
     setStatus(
-      result.draft?.enclosure ? "success" : "idle",
-      result.draft?.enclosure ? "已提取种子链接，请核对标题" : "未检测到种子链接，可手动填写"
+      hasEnclosure || hasDynamicDownload ? "success" : "idle",
+      hasDynamicDownload
+        ? "已识别 M-Team 资源，发送时将生成临时下载地址"
+        : hasEnclosure
+          ? "已提取种子链接，请核对标题"
+          : "未检测到种子链接，可手动填写"
     );
   } finally {
     setButtonBusy(elements.refreshButton, false);
@@ -308,7 +318,7 @@ async function sendCurrentDraft() {
     elements.titleInput.focus();
     throw new Error("请填写用于识别的发布标题");
   }
-  if (!isSupportedTorrentUrl(draft.enclosure)) {
+  if (!isSupportedTorrentUrl(draft.enclosure) && !isMTeamDynamicDraft(draft)) {
     elements.enclosureInput.focus();
     throw new Error("请填写有效的种子下载链接或磁力链接");
   }
