@@ -44,6 +44,7 @@ export async function saveSettings(input) {
     baseUrl: normalizeBaseUrl(input?.baseUrl),
     apiToken,
     includeCookiesByDefault: Boolean(input?.includeCookiesByDefault),
+    recognizeBeforeDownload: Boolean(input?.recognizeBeforeDownload),
     defaultDownloader: String(input?.defaultDownloader ?? "").trim(),
     defaultSavePath: String(input?.defaultSavePath ?? "").trim()
   };

@@ -279,26 +279,6 @@ body {
   font-size: 11px;
 }
 
-.cookie-row {
-  margin-top: 12px;
-  border-top: 1px solid var(--line);
-  padding-top: 11px;
-}
-
-.cookie-row > div {
-  display: grid;
-  gap: 2px;
-}
-
-.cookie-row strong {
-  font-size: 12px;
-}
-
-.cookie-row span {
-  color: var(--muted);
-  font-size: 10px;
-}
-
 .submit-zone {
   border-top: 1px solid var(--line);
   padding: 12px 14px;

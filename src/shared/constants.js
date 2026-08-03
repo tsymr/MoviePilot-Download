@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   baseUrl: "http://localhost:3000",
   apiToken: "",
   includeCookiesByDefault: true,
+  recognizeBeforeDownload: false,
   defaultDownloader: "",
   defaultSavePath: ""
 });

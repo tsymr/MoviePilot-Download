@@ -67,18 +67,28 @@
           </div>
         </section>
 
-        <section class="settings-section" aria-labelledby="privacyHeading">
+        <section class="settings-section" aria-labelledby="behaviorHeading">
           <div class="section-rail">
             <span>03</span>
-            <h2 id="privacyHeading">PT 登录态</h2>
+            <h2 id="behaviorHeading">发送行为</h2>
           </div>
-          <div class="section-content">
+          <div class="section-content behavior-list">
             <div class="setting-line switch-row">
               <div>
-                <strong>默认附带当前站点 Cookie</strong>
+                <strong>发送前识别并确认</strong>
+                <span>开启后右键发送会先展示识别结果，确认后才创建任务</span>
+              </div>
+              <label class="switch" title="发送前识别并确认">
+                <input id="recognizeBeforeDownloadInput" type="checkbox">
+                <span class="switch-track" aria-hidden="true"></span>
+              </label>
+            </div>
+            <div class="setting-line switch-row">
+              <div>
+                <strong>附带当前站点 Cookie</strong>
                 <span>Cookie 仅随本次请求发送，不保存</span>
               </div>
-              <label class="switch" title="默认附带当前站点 Cookie">
+              <label class="switch" title="附带当前站点 Cookie">
                 <input id="includeCookiesInput" type="checkbox">
                 <span class="switch-track" aria-hidden="true"></span>
               </label>
@@ -105,7 +115,7 @@
 
       <footer class="settings-footer">
         <span>MoviePilot PT Send</span>
-        <span>v0.1.0 · Manifest V3</span>
+        <span>v0.2.0 · Manifest V3</span>
       </footer>
     </main>
 

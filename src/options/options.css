@@ -147,6 +147,12 @@ body {
   font-size: 11px;
 }
 
+.behavior-list .setting-line + .setting-line {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
 .action-bar {
   display: flex;
   min-height: 76px;

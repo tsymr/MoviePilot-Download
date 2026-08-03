@@ -26,7 +26,6 @@ const elements = {
   mediaCategory: document.querySelector("#mediaCategory"),
   downloaderSelect: document.querySelector("#downloaderSelect"),
   pathSelect: document.querySelector("#pathSelect"),
-  cookieToggle: document.querySelector("#cookieToggle"),
   sendButton: document.querySelector("#sendButton"),
   statusBar: document.querySelector("#statusBar"),
   statusDot: document.querySelector("#statusDot"),
@@ -36,7 +35,8 @@ const elements = {
 const state = {
   settings: null,
   pageDraft: null,
-  configured: false
+  configured: false,
+  recognitionReady: false
 };
 
 /**
@@ -135,8 +135,13 @@ function fillDraft(draft) {
  * @sideEffects 切换识别结果 DOM 的可见性。
  */
 function clearRecognition() {
+  state.recognitionReady = false;
   elements.recognitionResult.hidden = true;
   elements.recognitionEmpty.hidden = false;
+  if (state.settings?.recognizeBeforeDownload && state.configured) {
+    // 开启确认模式后，标题或链接变化会使旧识别结果失效，必须重新识别才能发送。
+    elements.sendButton.disabled = true;
+  }
 }
 
 /**
@@ -163,6 +168,8 @@ function renderRecognition(context) {
   elements.mediaCategory.textContent = media.category ?? "默认";
   elements.recognitionEmpty.hidden = true;
   elements.recognitionResult.hidden = false;
+  state.recognitionReady = true;
+  elements.sendButton.disabled = !state.configured;
   return true;
 }
 
@@ -254,17 +261,22 @@ async function refreshDraft() {
 /**
  * 请求 MoviePilot 识别当前标题。
  *
+ * @param {object} [options] 识别调用选项。
+ * @param {boolean} [options.requestPermission] 是否允许触发 Chrome 主机权限申请。
  * @returns {Promise<void>} 识别结果展示完成后解决。
  * @throws {Error} 权限被拒绝、标题为空或识别失败时抛出。
- * @sideEffects 可能弹出主机权限提示，并向 MoviePilot 发起识别请求。
+ * @sideEffects 手动模式可能弹出主机权限提示，并向 MoviePilot 发起识别请求。
  */
-async function recognizeCurrentDraft() {
+async function recognizeCurrentDraft({ requestPermission = true } = {}) {
   const draft = collectDraft();
   if (!draft.title) {
     elements.titleInput.focus();
     throw new Error("请先填写用于识别的发布标题");
   }
-  const granted = await requestMoviePilotPermission(state.settings.baseUrl);
+  clearRecognition();
+  const granted = requestPermission
+    ? await requestMoviePilotPermission(state.settings.baseUrl)
+    : await hasMoviePilotPermission(state.settings.baseUrl);
   if (!granted) {
     throw new Error("未授予 MoviePilot 主机访问权限");
   }
@@ -300,12 +312,13 @@ async function sendCurrentDraft() {
     elements.enclosureInput.focus();
     throw new Error("请填写有效的种子下载链接或磁力链接");
   }
+  if (state.settings.recognizeBeforeDownload && !state.recognitionReady) {
+    throw new Error("请先完成媒体识别，再确认发送");
+  }
 
-  const includeCookies = elements.cookieToggle.checked;
   const granted = await requestSendPermissions(
     state.settings.baseUrl,
-    draft,
-    includeCookies
+    state.settings.includeCookiesByDefault
   );
   if (!granted) {
     throw new Error("所需访问权限未获授权");
@@ -317,11 +330,10 @@ async function sendCurrentDraft() {
     const result = await callBackground(MESSAGE_TYPES.SEND_TORRENT, {
       draft,
       downloader: elements.downloaderSelect.value,
-      savePath: elements.pathSelect.value,
-      includeCookies
+      savePath: elements.pathSelect.value
     });
     const task = result.downloadId ? ` · ${result.downloadId.slice(0, 12)}` : "";
-    const cookieState = includeCookies && !result.includedCookies
+    const cookieState = state.settings.includeCookiesByDefault && !result.includedCookies
       ? " · 当前站点没有可用 Cookie"
       : "";
     setStatus("success", `下载任务已创建${task}${cookieState}`);
@@ -335,16 +347,16 @@ async function sendCurrentDraft() {
  *
  * @returns {Promise<void>} 初始渲染完成后解决。
  * @throws {Error} 本地设置读取失败时抛出。
- * @sideEffects 读取 Chrome 存储、注入页面提取函数，并在已有权限时读取 MoviePilot 选项。
+ * @sideEffects 读取 Chrome 存储、注入页面提取函数；确认模式下会自动访问 MoviePilot 识别。
  */
 async function initialize() {
   renderIcons();
   state.settings = await getSettings();
   state.configured = Boolean(state.settings.apiToken);
   elements.configurationNotice.hidden = state.configured;
-  elements.cookieToggle.checked = state.settings.includeCookiesByDefault;
   elements.recognizeButton.disabled = !state.configured;
-  elements.sendButton.disabled = !state.configured;
+  elements.sendButton.disabled = !state.configured
+    || state.settings.recognizeBeforeDownload;
   // 即使首次尚未授权联网，也要保留用户已配置的默认路由，防止发送时静默回退为自动值。
   populateSelect(
     elements.downloaderSelect,
@@ -365,10 +377,25 @@ async function initialize() {
     setStatus("error", error.message);
   }
 
-  if (state.configured && await hasMoviePilotPermission(state.settings.baseUrl)) {
-    loadDownloadOptions(true).catch(() => {
+  if (!state.configured) {
+    return;
+  }
+
+  const hasPermission = await hasMoviePilotPermission(state.settings.baseUrl);
+  if (hasPermission) {
+    const optionLoad = loadDownloadOptions(true).catch(() => {
       // 选项加载失败不阻断手动发送，真正错误会在识别或发送时明确展示。
     });
+    if (state.settings.recognizeBeforeDownload) {
+      await Promise.all([
+        optionLoad,
+        recognizeCurrentDraft({ requestPermission: false })
+      ]);
+    } else {
+      await optionLoad;
+    }
+  } else if (state.settings.recognizeBeforeDownload) {
+    setStatus("error", "请先在扩展设置中测试连接并授予访问权限");
   }
 }
 

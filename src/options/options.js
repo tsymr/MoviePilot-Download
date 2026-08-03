@@ -1,5 +1,5 @@
 import { MESSAGE_TYPES } from "../shared/constants.js";
-import { requestMoviePilotPermission } from "../shared/permissions.js";
+import { requestSendPermissions } from "../shared/permissions.js";
 import { getSettings, saveSettings } from "../shared/storage.js";
 import { normalizeBaseUrl } from "../shared/url-utils.js";
 
@@ -10,6 +10,7 @@ const elements = {
   tokenVisibilityButton: document.querySelector("#tokenVisibilityButton"),
   defaultDownloaderSelect: document.querySelector("#defaultDownloaderSelect"),
   defaultPathSelect: document.querySelector("#defaultPathSelect"),
+  recognizeBeforeDownloadInput: document.querySelector("#recognizeBeforeDownloadInput"),
   includeCookiesInput: document.querySelector("#includeCookiesInput"),
   testButton: document.querySelector("#testButton"),
   saveButton: document.querySelector("#saveButton"),
@@ -72,6 +73,7 @@ function collectSettings() {
     baseUrl: elements.baseUrlInput.value,
     apiToken: elements.apiTokenInput.value,
     includeCookiesByDefault: elements.includeCookiesInput.checked,
+    recognizeBeforeDownload: elements.recognizeBeforeDownloadInput.checked,
     defaultDownloader: elements.defaultDownloaderSelect.value,
     defaultSavePath: elements.defaultPathSelect.value
   };
@@ -88,6 +90,7 @@ function fillSettings(settings) {
   elements.baseUrlInput.value = settings.baseUrl;
   elements.apiTokenInput.value = settings.apiToken;
   elements.includeCookiesInput.checked = settings.includeCookiesByDefault;
+  elements.recognizeBeforeDownloadInput.checked = settings.recognizeBeforeDownload;
   ensureStoredOption(
     elements.defaultDownloaderSelect,
     settings.defaultDownloader,
@@ -98,6 +101,26 @@ function fillSettings(settings) {
     settings.defaultSavePath,
     "已保存路径"
   );
+}
+
+/**
+ * 在申请权限前完成同步表单校验，避免无效配置触发浏览器授权框。
+ *
+ * @param {object} input 设置页收集的原始配置。
+ * @returns {object} 地址和 Token 已规范化的配置副本。
+ * @throws {TypeError} MoviePilot 地址无效或 API Token 长度不足时抛出。
+ * @sideEffects 无副作用，不读取或修改浏览器权限。
+ */
+function validateSettingsInput(input) {
+  const apiToken = String(input?.apiToken ?? "").trim();
+  if (apiToken.length < 16) {
+    throw new TypeError("MoviePilot API Token 至少需要 16 个字符");
+  }
+  return {
+    ...input,
+    baseUrl: normalizeBaseUrl(input?.baseUrl),
+    apiToken
+  };
 }
 
 /**
@@ -184,14 +207,23 @@ async function callBackground(type) {
  * 保存当前设置。
  *
  * @returns {Promise<object>} 已规范化的设置。
- * @throws {TypeError|Error} 表单校验或 Chrome 存储失败时抛出。
- * @sideEffects 写入 chrome.storage.local。
+ * @throws {TypeError|Error} 表单校验、权限申请或 Chrome 存储失败时抛出。
+ * @sideEffects 可能修改主机/Cookie 权限，并写入 chrome.storage.local。
  */
 async function saveCurrentSettings() {
   setButtonBusy(elements.saveButton, true);
   setStatus("working", "正在保存设置");
   try {
-    const saved = await saveSettings(collectSettings());
+    const input = validateSettingsInput(collectSettings());
+    // 权限请求必须紧邻提交手势；保存后右键直发才能全程不再弹出确认。
+    const granted = await requestSendPermissions(
+      input.baseUrl,
+      input.includeCookiesByDefault
+    );
+    if (!granted) {
+      throw new Error("未授予当前配置所需的访问权限");
+    }
+    const saved = await saveSettings(input);
     elements.baseUrlInput.value = saved.baseUrl;
     setStatus("idle", "设置已保存，尚未测试连接");
     return saved;
@@ -211,17 +243,15 @@ async function testCurrentConnection() {
   setButtonBusy(elements.testButton, true);
   setStatus("working", "正在连接 MoviePilot");
   try {
-    const input = collectSettings();
-    const normalizedBaseUrl = normalizeBaseUrl(input.baseUrl);
-    const apiToken = String(input.apiToken ?? "").trim();
-    if (apiToken.length < 16) {
-      throw new TypeError("MoviePilot API Token 至少需要 16 个字符");
-    }
+    const input = validateSettingsInput(collectSettings());
 
     // 权限请求必须直接发生在点击手势中，不能放到异步存储写入之后。
-    const granted = await requestMoviePilotPermission(normalizedBaseUrl);
+    const granted = await requestSendPermissions(
+      input.baseUrl,
+      input.includeCookiesByDefault
+    );
     if (!granted) {
-      throw new Error("未授予 MoviePilot 主机访问权限");
+      throw new Error("未授予当前配置所需的访问权限");
     }
     const saved = await saveSettings(input);
     elements.baseUrlInput.value = saved.baseUrl;

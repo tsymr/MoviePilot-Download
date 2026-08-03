@@ -4,12 +4,13 @@
 
 ## 功能
 
-- 在种子链接或 PT 页面上使用右键菜单“识别并发送到 MoviePilot”。
+- 在种子链接或 PT 页面上使用右键菜单“识别并发送到 MoviePilot”，默认无需确认即可发送。
 - 从常见 NexusPHP 类页面和通用 PT 页面提取下载链接、发布标题与副标题。
-- 调用 MoviePilot `/api/v1/media/recognize` 预览媒体、年份、季集和分类。
+- 可配置“发送前识别并确认”；开启后自动预览媒体、年份、季集和分类，再由用户确认下载。
 - 调用 MoviePilot `/api/v1/download/add` 创建任务。
 - 下载器与保存路径默认留空，由 MoviePilot 自动选择；也可以在弹窗中临时覆盖。
-- 对需要登录态的下载链接，可临时读取该下载主机的 Cookie 并随本次请求转交 MoviePilot。
+- 可在设置中统一控制是否附带当前 PT 站 Cookie，发送弹窗不再提供单次覆盖。
+- 下载请求完成后，在来源网页底部显示成功或失败提示。
 - 支持 HTTP(S) 种子下载链接和 magnet 链接。
 
 当前实现按本机 MoviePilot `v2.15.3` API 开发。
@@ -28,7 +29,8 @@
    ```
 
 5. 打开扩展设置，填写 MoviePilot 地址和 MoviePilot 配置中的 `API_TOKEN`。
-6. 点击“测试连接”，授权访问 MoviePilot 主机并同步下载器、下载目录。
+6. 按需要配置“发送前识别并确认”和“附带当前站点 Cookie”。
+7. 点击“测试连接”，一次性授权所需权限并同步下载器、下载目录。
 
 MoviePilot 地址填写 Web 入口或反向代理入口即可，例如：
 
@@ -46,9 +48,10 @@ https://example.com/moviepilot
 
 1. 在 PT 站种子下载链接上点击右键。
 2. 选择“识别并发送到 MoviePilot”。
-3. 核对扩展弹窗中的下载链接和发布标题。
-4. 点击“识别”预览 MoviePilot 识别结果。
-5. 点击“发送到 MoviePilot”。
+3. 默认模式会直接使用设置中的下载器、保存路径和 Cookie 策略创建任务。
+4. 网页底部会显示发送成功或失败结果。
+
+开启“发送前识别并确认”后，第 3 步会改为打开弹窗并自动展示 MoviePilot 识别结果；核对后点击“发送到 MoviePilot”才会创建任务。标题或链接被修改后，必须重新识别。
 
 ### 当前详情页
 
@@ -67,18 +70,18 @@ https://example.com/moviepilot
 
 ## 权限与凭据
 
-扩展没有固定的全站主机权限，只有在用户点击测试、识别或发送时才申请需要的主机：
+扩展没有固定的全站主机权限。设置保存或连接测试时会申请 MoviePilot 主机权限，并按 Cookie 配置申请或撤销可选权限；右键发送本身不再弹出授权框：
 
 | 权限 | 用途 |
 | --- | --- |
 | `activeTab`、`scripting` | 在用户当前打开的 PT 页面只读提取种子信息。 |
 | `contextMenus` | 提供右键发送入口。 |
 | `storage` | 在本机保存 MoviePilot 地址、API Token 和默认选项。 |
-| 可选主机权限 | 访问用户配置的 MoviePilot 主机；附带 Cookie 时访问种子下载主机。 |
-| 可选 `cookies` | 仅在用户启用“附带当前 PT 站 Cookie”后读取下载 URL 对应的 Cookie。 |
+| 可选主机权限 | 仅访问用户配置的 MoviePilot 主机；当前 PT 页面由 `activeTab` 临时授权。 |
+| 可选 `cookies` | 仅在设置启用后读取当前 PT 详情页对应的 Cookie。 |
 
 - API Token 保存在 `chrome.storage.local`，不会使用浏览器同步存储；存储访问级别限制为扩展可信上下文。
-- PT Cookie 不会写入扩展存储，只在点击发送后临时读取并交给用户配置的 MoviePilot。
+- PT Cookie 不会写入扩展存储，只在发送时从当前 PT 页面临时读取并交给用户配置的 MoviePilot；关闭配置后发送逻辑不会读取 Cookie。
 - MoviePilot 请求使用 `X-API-KEY` 请求头，API Token 不出现在 URL、错误消息或扩展日志中。
 - 扩展申请主机权限时会固定 URL 的实际端口；未填写端口时使用 HTTP 80 或 HTTPS 443。
 
@@ -107,7 +110,7 @@ scripts/validate-extension.mjs 静态结构校验
 ## 已知边界
 
 - 扩展发送的是可直接下载 `.torrent` 的 URL 或 magnet 链接，不会把 PT 详情页 URL 当成种子文件。
-- 各 PT 站 DOM 结构并不统一，自动提取结果在发送前应人工核对。
+- 各 PT 站 DOM 结构并不统一；需要逐次核对时应开启“发送前识别并确认”。
 - 如果 PT 站使用验证码、一次性页面交互或非 Cookie 鉴权，MoviePilot 仍可能无法从链接取得种子文件。
 - MoviePilot 必须已经配置至少一个下载器和匹配媒体分类的下载目录。
 
