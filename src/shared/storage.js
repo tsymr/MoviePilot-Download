@@ -14,9 +14,14 @@ import { normalizeBaseUrl } from "./url-utils.js";
  */
 export async function getSettings() {
   const stored = await chrome.storage.local.get(SETTINGS_KEY);
+  const saved = stored[SETTINGS_KEY] ?? {};
   return {
     ...DEFAULT_SETTINGS,
-    ...(stored[SETTINGS_KEY] ?? {})
+    ...saved,
+    includeCookiesByDefault: saved.includeCookiesByDefault === undefined
+      ? DEFAULT_SETTINGS.includeCookiesByDefault
+      : saved.includeCookiesByDefault === true,
+    recognizeBeforeDownload: saved.recognizeBeforeDownload === true
   };
 }
 
@@ -43,8 +48,8 @@ export async function saveSettings(input) {
   const settings = {
     baseUrl: normalizeBaseUrl(input?.baseUrl),
     apiToken,
-    includeCookiesByDefault: Boolean(input?.includeCookiesByDefault),
-    recognizeBeforeDownload: Boolean(input?.recognizeBeforeDownload),
+    includeCookiesByDefault: input?.includeCookiesByDefault === true,
+    recognizeBeforeDownload: input?.recognizeBeforeDownload === true,
     defaultDownloader: String(input?.defaultDownloader ?? "").trim(),
     defaultSavePath: String(input?.defaultSavePath ?? "").trim()
   };

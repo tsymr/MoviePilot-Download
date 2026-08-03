@@ -1,5 +1,6 @@
 import { MESSAGE_TYPES } from "../shared/constants.js";
 import { requestSendPermissions } from "../shared/permissions.js";
+import { getContextMenuTitle } from "../shared/settings-policy.js";
 import { getSettings, saveSettings } from "../shared/storage.js";
 import { normalizeBaseUrl } from "../shared/url-utils.js";
 
@@ -124,6 +125,33 @@ function validateSettingsInput(input) {
 }
 
 /**
+ * 申请当前配置所需权限并持久化设置。
+ *
+ * 权限申请必须由点击手势直接触发，因此先发起申请；即使用户拒绝权限，也继续保存
+ * 行为开关，避免界面状态与后台实际策略不一致。调用方可根据 granted 单独提示权限问题。
+ *
+ * @returns {Promise<{saved: object, granted: boolean}>} 已保存设置和权限是否完整授予。
+ * @throws {TypeError|Error} 表单校验或 Chrome 本地存储写入失败时抛出。
+ * @sideEffects 可能修改 Chrome 权限，并覆盖 chrome.storage.local 中的扩展设置。
+ */
+async function persistSettingsWithPermissions() {
+  const input = validateSettingsInput(collectSettings());
+  let granted = false;
+  try {
+    granted = await requestSendPermissions(
+      input.baseUrl,
+      input.includeCookiesByDefault
+    );
+  } catch {
+    // 权限失败不能阻止识别、Cookie 等行为开关落盘，否则页面会显示错误的当前状态。
+  }
+  return {
+    saved: await saveSettings(input),
+    granted
+  };
+}
+
+/**
  * 为接口暂不可用时的已保存值补充选项，避免打开设置页就意外清空默认路由。
  *
  * @param {HTMLSelectElement} select 目标选择框。
@@ -207,25 +235,20 @@ async function callBackground(type) {
  * 保存当前设置。
  *
  * @returns {Promise<object>} 已规范化的设置。
- * @throws {TypeError|Error} 表单校验、权限申请或 Chrome 存储失败时抛出。
+ * @throws {TypeError|Error} 表单校验或 Chrome 存储失败时抛出。
  * @sideEffects 可能修改主机/Cookie 权限，并写入 chrome.storage.local。
  */
 async function saveCurrentSettings() {
   setButtonBusy(elements.saveButton, true);
   setStatus("working", "正在保存设置");
   try {
-    const input = validateSettingsInput(collectSettings());
-    // 权限请求必须紧邻提交手势；保存后右键直发才能全程不再弹出确认。
-    const granted = await requestSendPermissions(
-      input.baseUrl,
-      input.includeCookiesByDefault
-    );
-    if (!granted) {
-      throw new Error("未授予当前配置所需的访问权限");
-    }
-    const saved = await saveSettings(input);
+    const { saved, granted } = await persistSettingsWithPermissions();
     elements.baseUrlInput.value = saved.baseUrl;
-    setStatus("idle", "设置已保存，尚未测试连接");
+    if (!granted) {
+      setStatus("error", "设置已保存，但访问权限未完整授予");
+      return saved;
+    }
+    setStatus("idle", `设置已保存 · ${getContextMenuTitle(saved)}`);
     return saved;
   } finally {
     setButtonBusy(elements.saveButton, false);
@@ -243,18 +266,11 @@ async function testCurrentConnection() {
   setButtonBusy(elements.testButton, true);
   setStatus("working", "正在连接 MoviePilot");
   try {
-    const input = validateSettingsInput(collectSettings());
-
-    // 权限请求必须直接发生在点击手势中，不能放到异步存储写入之后。
-    const granted = await requestSendPermissions(
-      input.baseUrl,
-      input.includeCookiesByDefault
-    );
-    if (!granted) {
-      throw new Error("未授予当前配置所需的访问权限");
-    }
-    const saved = await saveSettings(input);
+    const { saved, granted } = await persistSettingsWithPermissions();
     elements.baseUrlInput.value = saved.baseUrl;
+    if (!granted) {
+      throw new Error("设置已保存，但访问权限未完整授予");
+    }
     const result = await callBackground(MESSAGE_TYPES.TEST_CONNECTION);
     fillDownloadOptions(result.downloaders, result.paths, saved);
     setStatus(

@@ -1,4 +1,4 @@
-import { MESSAGE_TYPES } from "./shared/constants.js";
+import { MESSAGE_TYPES, SETTINGS_KEY } from "./shared/constants.js";
 import {
   addTorrent,
   MoviePilotApiError,
@@ -8,6 +8,10 @@ import {
 import { extractTorrentPage } from "./shared/page-extractor.js";
 import { renderMoviePilotToast } from "./shared/page-toast.js";
 import { hasMoviePilotPermission } from "./shared/permissions.js";
+import {
+  getContextMenuTitle,
+  isRecognitionConfirmationEnabled
+} from "./shared/settings-policy.js";
 import {
   getSettings,
   setPendingDraft,
@@ -279,13 +283,32 @@ async function handleMessage(message) {
  * @sideEffects 覆盖本扩展的全部右键菜单项。
  */
 async function installContextMenu() {
+  const settings = await getSettings();
   await chrome.contextMenus.removeAll();
   chrome.contextMenus.create({
     id: CONTEXT_MENU_ID,
-    title: "识别并发送到 MoviePilot",
+    title: getContextMenuTitle(settings),
     contexts: ["link", "page"],
     documentUrlPatterns: ["http://*/*", "https://*/*"]
   });
+}
+
+/**
+ * 让已有右键菜单立即反映最新识别策略，菜单缺失时自动重新创建。
+ *
+ * @returns {Promise<void>} 菜单标题刷新完成后解决。
+ * @sideEffects 读取扩展设置并更新或重建右键菜单。
+ */
+async function refreshContextMenu() {
+  const settings = await getSettings();
+  try {
+    await chrome.contextMenus.update(CONTEXT_MENU_ID, {
+      title: getContextMenuTitle(settings)
+    });
+  } catch {
+    // 扩展刚更新或浏览器清理菜单时可能不存在旧项，此时恢复完整菜单定义。
+    await installContextMenu();
+  }
 }
 
 /**
@@ -312,7 +335,7 @@ async function handleContextMenuClick(info, tab) {
       throw new Error("请先在扩展设置中配置 MoviePilot");
     }
 
-    if (settings.recognizeBeforeDownload) {
+    if (isRecognitionConfirmationEnabled(settings)) {
       await setPendingDraft(draft);
       await chrome.action.openPopup();
       return;
@@ -365,6 +388,15 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onStartup.addListener(() => {
   installContextMenu().catch(() => {
     // 菜单创建失败不影响用户通过工具栏弹窗发送种子。
+  });
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local" || !changes[SETTINGS_KEY]) {
+    return;
+  }
+  refreshContextMenu().catch(() => {
+    // 菜单刷新失败不改变点击时读取的真实策略，下次启动仍会重新创建。
   });
 });
 
